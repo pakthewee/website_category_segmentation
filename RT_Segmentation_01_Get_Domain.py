@@ -1,0 +1,84 @@
+# PySpark Format Conversion
+
+# Import libraries
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, lit, broadcast, approx_count_distinct
+from pyspark.sql import Row
+
+# Start Spark session (if running as script; comment if running in cluster)
+# spark = SparkSession.builder.getOrCreate()
+
+# Function 1: Get domain from table 1
+def get_domain(label_use, segment_name, month):
+    df = spark.sql(f"""
+        WITH df1 AS (
+            SELECT DISTINCT id,
+                            STRING(domainname) AS domainname_temp,
+                            month
+            FROM table_1
+            WHERE label LIKE '%{label_use}%'
+              AND month IN ({month})
+        )
+        SELECT id,
+               '{segment_name}' AS segment,
+               CASE 
+                   WHEN domainname_temp LIKE '%,%' THEN SUBSTRING(domainname_temp, 2, LOCATE(',',domainname_temp,1)-2)
+                   ELSE SUBSTRING(domainname_temp, 2, LOCATE(']', domainname_temp,1)-2)
+               END AS domainname,
+               month
+        FROM df1
+    """)
+    print(f"segment name: {segment_name}")
+    return df
+
+# Function 2: Get domain name from table_2 using keyword
+def get_keyword_domain(keyword, segment_name, month):
+    keyword_lkup = spark.table("schema.table_2") \
+        .filter(col('month') == month) \
+        .filter(col('domainname').contains(keyword)) \
+        .select('domainname').distinct()
+
+    df = spark.table("schema.table_3") \
+        .filter(col("month") == month) \
+        .join(broadcast(keyword_lkup), 'domainname', 'inner') \
+        .select('id', 'domainname', 'month').distinct()
+
+    print(
+        f"domain by {keyword} = {keyword_lkup.agg(approx_count_distinct('domainname')).collect()}",
+        f"mobiles volume access = {df.agg(approx_count_distinct('id')).collect()}"
+    )
+
+    df = df.withColumn('segment', lit(segment_name))
+    cols = ['id', 'segment', 'domainname', 'month']
+    df = df.select(cols)
+    return df
+
+# Function 3: Get domain name from list of websites
+def get_website_domain(list_website, segment_name, month):
+    df = spark.table("schema.table_3") \
+        .filter(col('month') == month) \
+        .filter(col('domainname').isin(list_website)) \
+        .select('id', 'domainname', 'month').distinct()
+
+    df = df.withColumn('segment', lit(segment_name))
+    cols = ['id', 'segment', 'domainname', 'month']
+    df = df.select(cols)
+    return df
+
+# Function 4: Get server_hostname from list of websites
+def get_website_hostname(list_website, segment_name, month):
+    df = spark.table("schema.table_4") \
+        .filter(col('month') == month) \
+        .filter(col('server_hostname').isin(list_website)) \
+        .select('id', col('server_hostname').alias('domainname'), 'month').distinct()
+
+    df = df.withColumn('segment', lit(segment_name))
+    cols = ['id', 'segment', 'domainname', 'month']
+    df = df.select(cols)
+    return df
+
+# Function 5: Convert a list of website info to DataFrame
+def get_dataframe(list_ws):
+    report_frame = [Row(id=x[0], segment=x[1], month=x[2]) for x in list_ws]
+    df = spark.createDataFrame(report_frame)
+    return df
