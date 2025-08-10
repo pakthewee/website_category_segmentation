@@ -124,16 +124,17 @@ def write_read_from_path(df, path):
 
 
 ## Function 8: Function save data partition by month
-def df.count() == 0:
-print("skip: without data in this month")
-pass
+def save_delta_parmonth(path, df, month):
+    if df.count() == 0:
+        print("skip: without data in this month")
+        pass
 
-else:
-# save data post campaign
-df.write.mode("overwrite").partitionBy("month").option("rerplaceWhere", f"month= {month}").format("delta").save(path)
-dataframe = spark.read.format("delta").load(path)
-dataframe = datafrane.filter(col("month").isin(month))
-return dataframe
+    else:
+        # save data post campaign
+        df.write.mode("overwrite").partitionBy("month").option("rerplaceWhere", f"month= {month}").format("delta").save(path)
+        dataframe = spark.read.format("delta").load(path)
+        dataframe = datafrane.filter(col("month").isin(month))
+        return dataframe
 
 ## Funtion 9: create empty dataframe
 def get_empty_dataframe():
